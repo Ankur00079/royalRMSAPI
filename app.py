@@ -84,32 +84,24 @@ def login():
     return jsonify({"message": "Account not found"})
 
 
-def validate_token():
+@app.route("/api/auth/user", methods=["PUT"])
+def update_user():
     token = request.headers.get('Authorization')
-    if token:
-        try:
-            token = token.split()[1]  # Remove 'Bearer' prefix
-            payload = jwt.decode(token, app.config['SECRET_KEY'], algorithms=['HS256'])
-            # Validate expiration, user ID, or any other relevant data
-            # You can store user info in 'payload' and use it in your views
-            return True
-        except jwt.ExpiredSignatureError:
-            return False
-    return False
 
-@app.before_request
-def before_request():
-    if not validate_token():
-        return jsonify({'message': 'Unauthorized'}), 401
-
-
-@app.route("/user/<int:id>", methods=["PUT"])
-def update_user(id):
+    if not token:
+        return jsonify({'message': 'Token missing'}), 401
+    
+    try:
+        payload = jwt.decode(token.split()[1], app.config['SECRET_KEY'], algorithms=['HS256'])
+        user_id = payload['user_id']
+    except jwt.ExpiredSignatureError:
+        return jsonify({'message': 'Token expired'}), 401
+    
     cur = mysql.connection.cursor()
     name = request.json["name"]
     email = request.json["email"]
     cur.execute(
-        """UPDATE accounts SET name = %s, email = %s WHERE id = %s""", (name, email, id)
+        """UPDATE accounts SET name = %s, email = %s WHERE id = %s""", (name, email, user_id)
     )
     mysql.connection.commit()
     cur.close()
