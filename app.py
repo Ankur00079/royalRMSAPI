@@ -1,10 +1,12 @@
+import datetime
 from flask import Flask, jsonify, request
 from flask_mysqldb import MySQL
 from flask_bcrypt import Bcrypt
+import jwt
 
 app = Flask(__name__)
 
-app.secret_key = 'your_secret_key'
+app.secret_key = "RoyalRMSAnkurAndParth"
 app.config["MYSQL_USER"] = "root"
 app.config["MYSQL_PASSWORD"] = "1234"
 app.config["MYSQL_HOST"] = "localhost"
@@ -31,13 +33,13 @@ def get_users():
 @app.route("/user/<int:id>", methods=["GET"])
 def get_user_by_id(id):
     cur = mysql.connection.cursor()
-    cur.execute("""SELECT * FROM accounts WHERE id = %s""", (id,))
+    cur.execute("""SELECT name, email FROM accounts WHERE id = %s""", (id,))
     data = cur.fetchall()
     cur.close()
     return jsonify(data)
 
 
-@app.route("/register", methods=["POST"])
+@app.route("/api/auth/register", methods=["POST"])
 def register():
     cur = mysql.connection.cursor()
     name = request.json["name"]
@@ -53,7 +55,7 @@ def register():
     return jsonify({"message": "Registered successfully"})
 
 
-@app.route("/login", methods=["POST"])
+@app.route("/api/auth/login", methods=["POST"])
 def login():
     cur = mysql.connection.cursor()
     email = request.json["email"]
@@ -67,9 +69,38 @@ def login():
         hashed_password = account[-1]
         is_valid = bcrypt.check_password_hash(hashed_password, password)
         if is_valid:
-            return jsonify({"message": "Login successfully"})
+            token = jwt.encode(
+                {
+                    "user_id": account[0],
+                    "exp": datetime.datetime.utcnow() + datetime.timedelta(hours=1),
+                },
+                app.config["SECRET_KEY"],
+                algorithm="HS256",
+            )
+            return jsonify(
+                {"status": 200, "message": "Login successfully", "token": token}
+            )
         return jsonify({"message": "Invalid Password"})
     return jsonify({"message": "Account not found"})
+
+
+def validate_token():
+    token = request.headers.get('Authorization')
+    if token:
+        try:
+            token = token.split()[1]  # Remove 'Bearer' prefix
+            payload = jwt.decode(token, app.config['SECRET_KEY'], algorithms=['HS256'])
+            # Validate expiration, user ID, or any other relevant data
+            # You can store user info in 'payload' and use it in your views
+            return True
+        except jwt.ExpiredSignatureError:
+            return False
+    return False
+
+@app.before_request
+def before_request():
+    if not validate_token():
+        return jsonify({'message': 'Unauthorized'}), 401
 
 
 @app.route("/user/<int:id>", methods=["PUT"])
